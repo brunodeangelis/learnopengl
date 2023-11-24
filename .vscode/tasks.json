@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Odin - Debug",
+      "type": "shell",
+      "command": "odin",
+      "args": ["build", "${fileDirname}", "-debug", "-out:.build/main"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "Build Odin - Release",
+      "type": "shell",
+      "command": "odin",
+      "args": ["build", "${fileDirname}", "-out:.build/main"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always"
+      }
+    }
+  ]
+}

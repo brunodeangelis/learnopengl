@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/.build/main",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build Odin - Debug"
+    },
+    {
+      "name": "Run",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/.build/main",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build Odin - Release"
+    }
+  ]
+}
