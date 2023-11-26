@@ -1,3 +1,4 @@
+#type vertex
 #version 410 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aColor;
@@ -13,3 +14,14 @@ void main()
     vertexPos = gl_Position.xyz;
     vertexColor = aColor;
 }
+
+#type fragment
+#version 410 core
+out vec4 fragColor;
+
+in vec3 vertexPos;
+in vec3 vertexColor;
+
+void main() {
+    fragColor = vec4(vertexPos, 1.0f);
+} 

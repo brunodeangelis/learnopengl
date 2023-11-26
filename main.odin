@@ -7,6 +7,8 @@ import "core:fmt"
 import "core:runtime"
 import "core:math"
 import "core:strings"
+import "core:os"
+import "core:path/filepath"
 
 import gl "vendor:OpenGL"
 import "vendor:glfw"
@@ -85,8 +87,8 @@ main :: proc() {
 	gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 6 * size_of(f32), 3 * size_of(f32))
 	gl.EnableVertexAttribArray(1)
 
-	rect_shader = load_shader("rect")
-	tri_shader = load_shader("triangle")
+	rect_shader, _ = load_shader("rect")
+	tri_shader, _ = load_shader("triangle")
 
 	for !glfw.WindowShouldClose(window) {
 		render()
@@ -141,14 +143,26 @@ key_callback :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods
 	}
 }
 
+load_shader :: proc(name: string) -> (program: u32, success: bool) {
+	file_name, concat_err := strings.concatenate({name, SHADERS_EXTENSION})
+	if concat_err != nil {
+		return 0, false
+	}
+	defer delete(file_name)
 
-load_shader :: proc(name: string) -> (program: u32) {
-	vs := strings.concatenate({SHADERS_BASE_PATH, name, ".vs"})
-	fs := strings.concatenate({SHADERS_BASE_PATH, name, ".fs"})
+	file_path := filepath.join({SHADERS_BASE_PATH, file_name})
+	file := os.read_entire_file_from_filename(file_path) or_return
+	defer delete(file)
+
+	splits := [?]string {SHADERS_VERTEX_SEPARATOR, SHADERS_FRAGMENT_SEPARATOR}
+	sections, split_err := strings.split_multi(string(file), splits[:])
+	if split_err != nil {
+		return 0, false
+	}
+	defer delete(sections)
 
 	// See proc code in odin/vendor/OpenGL for details
-	id, _ := gl.load_shaders(vs, fs)
-	return id
+	return gl.load_shaders_source(sections[1], sections[2])
 }
 
 use_shader :: proc(id: u32) {
