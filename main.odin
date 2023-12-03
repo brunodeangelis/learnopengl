@@ -1,11 +1,12 @@
-// 4. Textures
-// https://learnopengl.com/Getting-started/Textures
+// 5. Transformations
+// https://learnopengl.com/Getting-started/Transformations
 
 package main
 
 import "core:fmt"
 import "core:runtime"
 import "core:math"
+import lalg "core:math/linalg"
 
 import gl "vendor:OpenGL"
 import "vendor:glfw"
@@ -15,10 +16,10 @@ window: glfw.WindowHandle
 
 rect_verts := [?]f32{
 	// xyz            // texture coords
-    0.0,  0.5, 0.0,   2.0, 2.0,   // TR
-    0.0, -0.5, 0.0,   2.0, 0.0,   // BR
-   -0.75, -0.5, 0.0,  0.0, 0.0,   // BL
-   -0.75,  0.5, 0.0,  0.0, 2.0,   // TL
+    0.5,  0.5, 0.0,   2.0, 2.0,   // TR
+    0.5, -0.5, 0.0,   2.0, 0.0,   // BR
+   -0.5, -0.5, 0.0,  0.0, 0.0,   // BL
+   -0.5,  0.5, 0.0,  0.0, 2.0,   // TL
 }
 rect_texture_coords := [?]f32{1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0}
 grass_texture, face_texture: u32
@@ -147,13 +148,25 @@ render :: proc() {
 	}
 
 	use_shader(rect_shader)
-	set_uniform(rect_shader, "myColor", v4{0.5, f32(sin(time) * 0.5 + 0.5), 0.25, 1.0})
+	sin_time01 := sin(time) * 0.5 + 0.5
+	set_uniform(rect_shader, "myColor", v4{0.5, f32(sin_time01), 0.25, 1.0})
 	set_uniform(rect_shader, "alpha", texture_alpha)
+	transform := mat4(1)
+	transform *= lalg.matrix4_translate_f32({-0.5, 0, 0})
+	transform *= lalg.matrix4_rotate_f32(f32(time), {0, 0, 1})
+	transform *= lalg.matrix4_scale_f32(v3(1.5))
+	set_uniform(rect_shader, "transform", &transform)
 	gl.ActiveTexture(gl.TEXTURE0);
 	gl.BindTexture(gl.TEXTURE_2D, grass_texture)
 	gl.ActiveTexture(gl.TEXTURE1);
 	gl.BindTexture(gl.TEXTURE_2D, face_texture)
 	gl.BindVertexArray(VAOs[0])
+	gl.DrawElements(gl.TRIANGLES, len(indices), gl.UNSIGNED_INT, nil)
+	transform2 := mat4(1)
+	transform2 *= lalg.matrix4_translate_f32({0.5, 0, 0})
+	transform2 *= lalg.matrix4_rotate_f32(f32(-time), {0, 0, 1})
+	transform2 *= lalg.matrix4_scale_f32(v3(f32(sin_time01)))
+	set_uniform(rect_shader, "transform", &transform2)
 	gl.DrawElements(gl.TRIANGLES, len(indices), gl.UNSIGNED_INT, nil)
     
 	use_shader(tri_shader)

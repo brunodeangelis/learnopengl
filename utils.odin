@@ -3,6 +3,7 @@ package main
 import "core:os"
 import "core:strings"
 import "core:path/filepath"
+import lalg "core:math/linalg"
 
 import gl "vendor:OpenGL"
 
@@ -51,4 +52,10 @@ set_uniform_v4 :: proc(program: u32, uniform: string, value: v4) {
 	)
 }
 
-set_uniform :: proc{set_uniform_int, set_uniform_f32, set_uniform_v4}
+set_uniform_mat4 :: proc(program: u32, uniform: string, value: ^mat4) {
+	gl.UniformMatrix4fv(
+		get_uniform_loc(program, uniform), 1, gl.FALSE, &value[0][0]
+	)
+}
+
+set_uniform :: proc{set_uniform_int, set_uniform_f32, set_uniform_v4, set_uniform_mat4}
