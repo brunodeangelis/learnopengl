@@ -8,7 +8,7 @@ import lalg "core:math/linalg"
 import gl "vendor:OpenGL"
 
 load_shader :: proc(name: string) -> (program: u32, success: bool) {
-	file_name, concat_err := strings.concatenate({name, SHADERS_EXTENSION})
+	file_name, concat_err := strings.concatenate({name, ".", SHADERS_EXTENSION})
 	if concat_err != nil {
 		return 0, false
 	}
