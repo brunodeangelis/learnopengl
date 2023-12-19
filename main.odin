@@ -1,5 +1,5 @@
-// 7. Camera
-// https://learnopengl.com/Getting-started/Camera
+// 8. Colors
+// https://learnopengl.com/Lighting/Colors
 
 package main
 
@@ -82,17 +82,30 @@ tri_verts := [?]f32{
 HOW_MANY :: 2
 VAOs := make([]u32, HOW_MANY)
 VBOs := make([]u32, HOW_MANY)
-cube_shader, tri_shader: u32
+cube_shader, tri_shader, light_shader: u32
 
 wireframe: bool
 
 texture_alpha: f32 = 0.3
 
-camera: Camera
+camera := Camera{
+	pos = {0, 0, 3},
+	up = {0, 1, 0},
+	speed = 10,
+	yaw = -90,
+	front = {0, 0, -1},
+	fov = 45,
+}
+
 moving_left, moving_right, moving_forwards, moving_backwards, moving_up, moving_down: bool
 current_frame_time, last_frame_time, delta_time: f64
 first_mouse := true
 last_mouse_pos: v2
+
+light := Light{
+	color = {1, 1, 1},
+	pos = {1.2, 1, 2},
+}
 
 main :: proc() {
 	if !glfw.Init() {
@@ -134,6 +147,7 @@ main :: proc() {
 	gl.GenVertexArrays(HOW_MANY, raw_data(VAOs))
 	gl.GenBuffers(HOW_MANY, raw_data(VBOs))
 
+	// Textured Cube
 	gl.BindVertexArray(VAOs[0])
 	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[0])
 	gl.BufferData(gl.ARRAY_BUFFER, size_of(cube_verts), &cube_verts, gl.STATIC_DRAW)
@@ -142,6 +156,7 @@ main :: proc() {
 	gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 5 * size_of(f32), 3 * size_of(f32))
 	gl.EnableVertexAttribArray(1)
 
+	// Triangle
 	gl.BindVertexArray(VAOs[1])
 	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[1])
 	gl.BufferData(gl.ARRAY_BUFFER, size_of(tri_verts), &tri_verts, gl.STATIC_DRAW)
@@ -152,6 +167,7 @@ main :: proc() {
 
 	cube_shader, _ = load_shader("cube")
 	tri_shader, _ = load_shader("triangle")
+	light_shader, _ = load_shader("light")
 
 	stbi.set_flip_vertically_on_load(1)
 
@@ -184,14 +200,6 @@ main :: proc() {
 	set_uniform(cube_shader, "myTexture2", 1)
 
 	world_up := v3{0, 1,0}
-	camera = {
-		pos = {0, 0, 3},
-		up = {0, 1, 0},
-		speed = 10,
-		yaw = -90,
-		front = {0, 0, -1},
-		fov = 45,
-	}
 	camera.right = lalg.normalize(lalg.cross(world_up, camera.dir))
 
 	for !glfw.WindowShouldClose(window) {
@@ -224,6 +232,7 @@ render :: proc() {
 	if moving_up do camera.pos.y += 0.1
 	if moving_down do camera.pos.y -= 0.1
 
+	// Textured Cube
 	use_shader(cube_shader)
 
 	view_mat := lalg.matrix4_look_at_f32(
@@ -237,7 +246,8 @@ render :: proc() {
 	set_uniform(cube_shader, "projection", &proj_mat)
 
 	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
-	set_uniform(cube_shader, "myColor", v4{0.5, f32(sin_time01), 0.25, 1.0})
+	set_uniform(cube_shader, "objectColor", v3{1, 0.5, 0.31})
+	set_uniform(cube_shader, "lightColor", light.color)
 	set_uniform(cube_shader, "alpha", texture_alpha)
 	gl.ActiveTexture(gl.TEXTURE0);
 	gl.BindTexture(gl.TEXTURE_2D, grass_texture)
@@ -256,10 +266,22 @@ render :: proc() {
 		gl.DrawArrays(gl.TRIANGLES, 0, 36)
 	}
     
+	// Triangle
 	use_shader(tri_shader)
 	set_uniform(tri_shader, "yFactor", f32(sin(current_frame_time) * 0.5))
 	gl.BindVertexArray(VAOs[1])
 	gl.DrawArrays(gl.TRIANGLES, 0, 3)
+
+	// Light Cube
+	use_shader(light_shader)
+	set_uniform(light_shader, "lightColor", light.color)
+	model_mat := lalg.matrix4_scale_f32(0.2)
+	model_mat = lalg.matrix4_translate_f32(light.pos) * model_mat
+	set_uniform(light_shader, "model", &model_mat)
+	set_uniform(light_shader, "view", &view_mat)
+	set_uniform(light_shader, "projection", &proj_mat)
+	gl.BindVertexArray(VAOs[0])
+	gl.DrawArrays(gl.TRIANGLES, 0, 36)
 
 	glfw.SwapBuffers(window)
 }

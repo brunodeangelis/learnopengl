@@ -12,3 +12,7 @@ Camera :: struct {
     pos, target, dir, up, right, front: v3,
     speed, yaw, pitch, fov: f32,
 }
+
+Light :: struct {
+	pos, color: v3,
+}

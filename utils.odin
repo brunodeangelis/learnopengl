@@ -45,6 +45,13 @@ set_uniform_f32 :: proc(program: u32, uniform: string, value: f32) {
 	gl.Uniform1f(get_uniform_loc(program, uniform), value)
 }
 
+set_uniform_v3 :: proc(program: u32, uniform: string, value: v3) {
+	gl.Uniform3f(
+		get_uniform_loc(program, uniform),
+		value.x, value.y, value.z
+	)
+}
+
 set_uniform_v4 :: proc(program: u32, uniform: string, value: v4) {
 	gl.Uniform4f(
 		get_uniform_loc(program, uniform),
@@ -58,4 +65,4 @@ set_uniform_mat4 :: proc(program: u32, uniform: string, value: ^mat4) {
 	)
 }
 
-set_uniform :: proc{set_uniform_int, set_uniform_f32, set_uniform_v4, set_uniform_mat4}
+set_uniform :: proc{set_uniform_int, set_uniform_f32, set_uniform_v3, set_uniform_v4, set_uniform_mat4}
