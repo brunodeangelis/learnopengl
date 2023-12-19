@@ -1,5 +1,5 @@
-// 6. Coordinate Systems
-// https://learnopengl.com/Getting-started/Coordinate-Systems
+// 7. Camera
+// https://learnopengl.com/Getting-started/Camera
 
 package main
 
@@ -88,6 +88,12 @@ wireframe: bool
 
 texture_alpha: f32 = 0.3
 
+camera: Camera
+moving_left, moving_right, moving_forwards, moving_backwards, moving_up, moving_down: bool
+current_frame_time, last_frame_time, delta_time: f64
+first_mouse := true
+last_mouse_pos: v2
+
 main :: proc() {
 	if !glfw.Init() {
 		fmt.println("Failed to initialize GLFW")
@@ -104,7 +110,7 @@ main :: proc() {
 
 	viewport[2] = WINDOW_WIDTH
 	viewport[3] = WINDOW_HEIGHT
-	window = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hi mom!", nil, nil)
+	window = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hola ma :)", nil, nil)
 	if window == nil {
 		fmt.print("Failed to create GLFW window\n")
 		glfw.Terminate()
@@ -112,8 +118,12 @@ main :: proc() {
 	}
 
 	glfw.MakeContextCurrent(window)
+
+	glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_DISABLED);  
 	glfw.SetFramebufferSizeCallback(window, fb_size_callback)
 	glfw.SetKeyCallback(window, key_callback)
+	glfw.SetCursorPosCallback(window, mouse_callback)
+	glfw.SetScrollCallback(window, scroll_callback)
 
 	// This does what gladLoadGLLoader() would do
 	gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, glfw.gl_set_proc_address)
@@ -173,6 +183,17 @@ main :: proc() {
 	set_uniform(cube_shader, "myTexture", 0)
 	set_uniform(cube_shader, "myTexture2", 1)
 
+	world_up := v3{0, 1,0}
+	camera = {
+		pos = {0, 0, 3},
+		up = {0, 1, 0},
+		speed = 10,
+		yaw = -90,
+		front = {0, 0, -1},
+		fov = 45,
+	}
+	camera.right = lalg.normalize(lalg.cross(world_up, camera.dir))
+
 	for !glfw.WindowShouldClose(window) {
 		render()
 		glfw.PollEvents()
@@ -180,7 +201,11 @@ main :: proc() {
 }
 
 render :: proc() {
-	time := glfw.GetTime()
+	using math
+
+	current_frame_time = glfw.GetTime()
+	delta_time = current_frame_time - last_frame_time
+	last_frame_time = current_frame_time
 
 	gl.ClearColor(0.2, 0.3, 0.3, 1.0)
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
@@ -191,12 +216,27 @@ render :: proc() {
 		gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL)
 	}
 
+	speed := camera.speed * f32(delta_time)
+	if moving_forwards do camera.pos += camera.front * speed
+	if moving_backwards do camera.pos -= camera.front * speed
+	if moving_left do camera.pos -= lalg.normalize(lalg.cross(camera.front, camera.up)) * speed
+	if moving_right do camera.pos += lalg.normalize(lalg.cross(camera.front, camera.up)) * speed
+	if moving_up do camera.pos.y += 0.1
+	if moving_down do camera.pos.y -= 0.1
+
 	use_shader(cube_shader)
-	view_mat := lalg.matrix4_translate_f32({0, 0, -5})
-	proj_mat := lalg.matrix4_perspective_f32(math.to_radians(f32(45)), f32(viewport[2]) / f32(viewport[3]), 0.01, 1000)
+
+	view_mat := lalg.matrix4_look_at_f32(
+		camera.pos,
+		camera.pos + camera.front,
+		camera.up,
+	)
 	set_uniform(cube_shader, "view", &view_mat)
+
+	proj_mat := lalg.matrix4_perspective_f32(to_radians(camera.fov), f32(viewport[2]) / f32(viewport[3]), 0.01, 1000)
 	set_uniform(cube_shader, "projection", &proj_mat)
-	sin_time01 := math.sin(time) * 0.5 + 0.5
+
+	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
 	set_uniform(cube_shader, "myColor", v4{0.5, f32(sin_time01), 0.25, 1.0})
 	set_uniform(cube_shader, "alpha", texture_alpha)
 	gl.ActiveTexture(gl.TEXTURE0);
@@ -207,7 +247,7 @@ render :: proc() {
 	for pos, idx in cube_positions {
 		rotate_by := f32(20 * idx)
 		if idx % 3 == 0 {
-			rotate_by += f32(time * 2)
+			rotate_by += f32(current_frame_time * 2)
 		}
 		model_mat := lalg.matrix4_rotate_f32(rotate_by, {1, 0.3, 0.5})
 		model_mat = lalg.matrix4_translate_f32(pos) * model_mat
@@ -217,7 +257,7 @@ render :: proc() {
 	}
     
 	use_shader(tri_shader)
-	set_uniform(tri_shader, "yFactor", f32(math.sin(time) * 0.5))
+	set_uniform(tri_shader, "yFactor", f32(sin(current_frame_time) * 0.5))
 	gl.BindVertexArray(VAOs[1])
 	gl.DrawArrays(gl.TRIANGLES, 0, 3)
 
@@ -226,27 +266,79 @@ render :: proc() {
 
 fb_size_callback :: proc "c" (window: glfw.WindowHandle, width, height: i32) {
 	// Implicit context needs to be set explicitly for "c" procs
-	// if inside it we're calling non-c procs (draw in this case)
+	// if inside it we're calling non-c procs (render in this case)
 	context = runtime.default_context()
 
 	gl.Viewport(0, 0, width, height)
 	gl.GetIntegerv(gl.VIEWPORT, &viewport[0]);
-	render() // Draw while resizing
+	render() // Render while resizing
 }
 
 key_callback :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32) {
-	if action == glfw.PRESS {
-		switch key {
-		case glfw.KEY_W:
-			wireframe = !wireframe
-		case glfw.KEY_ESCAPE:
-			glfw.SetWindowShouldClose(window, true)
-		case glfw.KEY_UP:
-			texture_alpha += 0.1
-			if texture_alpha >= 1.0 do texture_alpha = 1.0
-		case glfw.KEY_DOWN:
-			texture_alpha -= 0.1
-			if texture_alpha <= 0.0 do texture_alpha = 0.0
-		}
+	switch action {
+		case glfw.PRESS:
+			switch key {
+			case glfw.KEY_X: wireframe = !wireframe
+			case glfw.KEY_ESCAPE: glfw.SetWindowShouldClose(window, true)
+			case glfw.KEY_UP:
+				texture_alpha += 0.1
+				if texture_alpha >= 1.0 do texture_alpha = 1.0
+			case glfw.KEY_DOWN:
+				texture_alpha -= 0.1
+				if texture_alpha <= 0.0 do texture_alpha = 0.0
+			case glfw.KEY_W: moving_forwards = true
+			case glfw.KEY_S: moving_backwards = true
+			case glfw.KEY_A: moving_left = true
+			case glfw.KEY_D: moving_right = true
+			case glfw.KEY_Q: moving_down = true
+			case glfw.KEY_E: moving_up = true
+			}
+		
+		case glfw.RELEASE:
+			switch key {
+			case glfw.KEY_W: moving_forwards = false
+			case glfw.KEY_S: moving_backwards = false
+			case glfw.KEY_A: moving_left = false
+			case glfw.KEY_D: moving_right = false
+			case glfw.KEY_Q: moving_down = false
+			case glfw.KEY_E: moving_up = false
+			}
 	}
+}
+
+mouse_callback :: proc "c" (window: glfw.WindowHandle, x, y: f64) {
+	using math
+
+	x32 := f32(x)
+	y32 := f32(y)
+
+	if first_mouse {
+		last_mouse_pos = {x32, y32}
+		first_mouse = false
+	}
+	
+	offset := v2{
+		x32 - last_mouse_pos.x,
+		y32 - last_mouse_pos.y,
+	}
+	last_mouse_pos = {x32, y32}
+
+	sensitivity: f32 = 0.1
+	offset *= sensitivity
+
+	camera.yaw += offset.x
+	camera.pitch -= offset.y
+	camera.pitch = clamp(camera.pitch, -89, 89)
+
+	camera.dir = {
+		cos(to_radians(camera.yaw)) * cos(to_radians(camera.pitch)),
+		sin(to_radians(camera.pitch)),
+		sin(to_radians(camera.yaw)) * cos(to_radians(camera.pitch)),
+	}
+	camera.front = lalg.normalize(camera.dir)
+}
+
+scroll_callback :: proc "c" (window: glfw.WindowHandle, x_offset, y_offset: f64) {
+	camera.fov -= f32(y_offset)
+	camera.fov = clamp(camera.fov, 1, 45)
 }
