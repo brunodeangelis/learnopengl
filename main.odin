@@ -1,5 +1,5 @@
-// 9. Basic Lighting
-// https://learnopengl.com/Lighting/Basic-Lighting
+// 10. Materials
+// https://learnopengl.com/Lighting/Materials
 
 package main
 
@@ -251,10 +251,28 @@ render :: proc() {
 
 	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
 	set_uniform(cube_shader, "objectColor", v3{1, 0.5, 0.31})
-	set_uniform(cube_shader, "lightColor", light.color)
-	set_uniform(cube_shader, "lightPos", light.pos)
 	set_uniform(cube_shader, "viewPos", camera.pos)
 	set_uniform(cube_shader, "alpha", texture_alpha)
+
+	set_uniform(cube_shader, "material.ambient", v3{1, 0.5, 0.31})
+	set_uniform(cube_shader, "material.diffuse", v3{1, 0.5, 0.31})
+	set_uniform(cube_shader, "material.specular", v3{0.5, 0.5, 0.5})
+	set_uniform(cube_shader, "material.shininess", 32.0)
+	
+	light.color = {
+		f32(sin(current_frame_time * 2)),
+		f32(sin(current_frame_time * 0.7)),
+		f32(sin(current_frame_time * 1.3)),
+	}
+
+	ambient := light.color * 0.2
+	diffuse := light.color * 0.5
+
+	set_uniform(cube_shader, "light.pos", light.pos)
+	set_uniform(cube_shader, "light.ambient", ambient)
+	set_uniform(cube_shader, "light.diffuse", diffuse)
+	set_uniform(cube_shader, "light.specular", v3(1))
+
 	gl.ActiveTexture(gl.TEXTURE0);
 	gl.BindTexture(gl.TEXTURE_2D, grass_texture)
 	gl.ActiveTexture(gl.TEXTURE1);
