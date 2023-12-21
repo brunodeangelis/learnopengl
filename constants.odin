@@ -10,3 +10,5 @@ SHADERS_EXTENSION :: "glsl"
 SHADERS_BASE_PATH :: "shaders"
 SHADERS_VERTEX_SEPARATOR :: "#type vertex"
 SHADERS_FRAGMENT_SEPARATOR :: "#type fragment"
+
+TEXTURES_BASE_PATH :: "textures"

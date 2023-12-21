@@ -7,7 +7,6 @@ layout (location = 2) in vec3 aNormal;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
-uniform bool setNormal;
 
 out vec2 textureCoord;
 out vec3 normal;
@@ -31,9 +30,9 @@ in vec3 normal;
 in vec3 fragPos;
 
 struct Material {
-    vec3 ambient;
-    vec3 diffuse;
-    vec3 specular;
+    sampler2D diffuse;
+    sampler2D specular;
+    sampler2D emission;
     float shininess;
 };
 
@@ -49,38 +48,29 @@ uniform Material material;
 uniform Light light;
 
 uniform vec3 viewPos;
-uniform sampler2D myTexture;
-uniform sampler2D myTexture2;
-uniform float alpha;
 
 out vec4 fragColor;
 
 void main() {
-    vec3 ambient = light.ambient * material.ambient;
+    vec3 diffuseColor = texture(material.diffuse, textureCoord).rgb;
+    vec3 specularColor = texture(material.specular, textureCoord).rgb;
+    vec3 emissionColor = texture(material.emission, (textureCoord - 0.1) * 1.25).rgb;
+
+    // ambient
+    vec3 ambient = light.ambient * diffuseColor;
 
     // diffuse
     vec3 norm = normalize(normal);
     vec3 lightDir = normalize(light.pos - fragPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = light.diffuse * (diff * material.diffuse);
+    float diffuseIntensity = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = light.diffuse * diffuseColor * diffuseIntensity; 
 
     // specular
     vec3 viewDir = normalize(viewPos - fragPos);
     vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-    vec3 specular = light.specular * (spec * material.specular);
+    float specularIntensity = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    vec3 specular = light.specular * specularIntensity * specularColor;
 
-    vec3 result = ambient + diffuse + specular;
+    vec3 result = ambient + diffuse + specular + emissionColor;
     fragColor = vec4(result, 1.0);
-    
-    return;
-
-    vec4 texture1 = texture(myTexture, textureCoord);
-    vec4 texture2 = texture(myTexture2, vec2(1.0 - textureCoord.x, textureCoord.y));
-
-    fragColor = mix(
-        texture1 * vec4(result, 1.0),
-        texture2.rgba,
-        texture2.a * alpha
-    );
 }

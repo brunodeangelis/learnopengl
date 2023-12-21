@@ -1,5 +1,5 @@
-// 10. Materials
-// https://learnopengl.com/Lighting/Materials
+// 11. Lighting maps
+// https://learnopengl.com/Lighting/Lighting maps
 
 package main
 
@@ -72,7 +72,7 @@ cube_positions := [?]v3{
     {1.5,   0.2, -1.5},
     {-1.3,  1,   -1.5},
 }
-grass_texture, face_texture: u32
+container_texture, container_specular, container_emission: u32
 
 tri_verts := [?]f32{
 	// xyz           // rgb
@@ -81,14 +81,12 @@ tri_verts := [?]f32{
 	0.25, -0.5, 0,   0, 0, 1,
 }
 
-HOW_MANY :: 2
-VAOs := make([]u32, HOW_MANY)
-VBOs := make([]u32, HOW_MANY)
-cube_shader, tri_shader, light_shader: u32
+BUFFER_COUNT :: 1
+VAOs := make([]u32, BUFFER_COUNT)
+VBOs := make([]u32, BUFFER_COUNT)
+cube_shader, light_shader: u32
 
 wireframe: bool
-
-texture_alpha: f32 = 0.3
 
 camera := Camera{
 	pos = {0, 0, 3},
@@ -146,8 +144,8 @@ main :: proc() {
 
 	gl.Enable(gl.DEPTH_TEST)
 
-	gl.GenVertexArrays(HOW_MANY, raw_data(VAOs))
-	gl.GenBuffers(HOW_MANY, raw_data(VBOs))
+	gl.GenVertexArrays(BUFFER_COUNT, raw_data(VAOs))
+	gl.GenBuffers(BUFFER_COUNT, raw_data(VBOs))
 
 	// Textured Cube
 	gl.BindVertexArray(VAOs[0])
@@ -160,48 +158,19 @@ main :: proc() {
 	gl.VertexAttribPointer(2, 3, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 5 * size_of(f32))
 	gl.EnableVertexAttribArray(2)
 
-	// Triangle
-	gl.BindVertexArray(VAOs[1])
-	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[1])
-	gl.BufferData(gl.ARRAY_BUFFER, size_of(tri_verts), &tri_verts, gl.STATIC_DRAW)
-	gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 6 * size_of(f32), 0)
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 6 * size_of(f32), 3 * size_of(f32))
-	gl.EnableVertexAttribArray(1)
-
 	cube_shader, _ = load_shader("cube")
-	tri_shader, _ = load_shader("triangle")
 	light_shader, _ = load_shader("light")
 
 	stbi.set_flip_vertically_on_load(1)
-
-	image_width, image_height, image_chans: i32
-	image_bytes := stbi.load("images/grass.png", &image_width, &image_height, &image_chans, 0)
-	defer stbi.image_free(image_bytes)	
-	gl.GenTextures(1, &grass_texture)
-	gl.BindTexture(gl.TEXTURE_2D, grass_texture)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, i32(image_width), i32(image_height), 0, gl.RGB, gl.UNSIGNED_BYTE, image_bytes)
-	gl.GenerateMipmap(gl.TEXTURE_2D)
-
-	image2_width, image2_height, image2_chans: i32
-	image2_bytes := stbi.load("images/face.png", &image2_width, &image2_height, &image2_chans, 0)
-	defer stbi.image_free(image2_bytes)
-	gl.GenTextures(1, &face_texture)
-	gl.BindTexture(gl.TEXTURE_2D, face_texture)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, i32(image2_width), i32(image2_height), 0, gl.RGBA, gl.UNSIGNED_BYTE, image2_bytes)
-	gl.GenerateMipmap(gl.TEXTURE_2D)
+	
+	container_texture = load_texture("container.png")
+	container_specular = load_texture("container_specular.png")
+	container_emission = load_texture("container_emission.jpg", gl.CLAMP_TO_BORDER, gl.CLAMP_TO_BORDER)
 
 	use_shader(cube_shader)
-	set_uniform(cube_shader, "myTexture", 0)
-	set_uniform(cube_shader, "myTexture2", 1)
+	set_uniform(cube_shader, "material.diffuse", i32(container_texture))
+	set_uniform(cube_shader, "material.specular", i32(container_specular))
+	set_uniform(cube_shader, "material.emission", i32(container_emission))
 
 	world_up := v3{0, 1,0}
 	camera.right = lalg.normalize(lalg.cross(world_up, camera.dir))
@@ -250,20 +219,12 @@ render :: proc() {
 	set_uniform(cube_shader, "projection", &proj_mat)
 
 	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
-	set_uniform(cube_shader, "objectColor", v3{1, 0.5, 0.31})
 	set_uniform(cube_shader, "viewPos", camera.pos)
-	set_uniform(cube_shader, "alpha", texture_alpha)
 
 	set_uniform(cube_shader, "material.ambient", v3{1, 0.5, 0.31})
-	set_uniform(cube_shader, "material.diffuse", v3{1, 0.5, 0.31})
-	set_uniform(cube_shader, "material.specular", v3{0.5, 0.5, 0.5})
 	set_uniform(cube_shader, "material.shininess", 32.0)
 	
-	light.color = {
-		f32(sin(current_frame_time * 2)),
-		f32(sin(current_frame_time * 0.7)),
-		f32(sin(current_frame_time * 1.3)),
-	}
+	light.color = v3(1)
 
 	ambient := light.color * 0.2
 	diffuse := light.color * 0.5
@@ -273,10 +234,12 @@ render :: proc() {
 	set_uniform(cube_shader, "light.diffuse", diffuse)
 	set_uniform(cube_shader, "light.specular", v3(1))
 
-	gl.ActiveTexture(gl.TEXTURE0);
-	gl.BindTexture(gl.TEXTURE_2D, grass_texture)
 	gl.ActiveTexture(gl.TEXTURE1);
-	gl.BindTexture(gl.TEXTURE_2D, face_texture)
+	gl.BindTexture(gl.TEXTURE_2D, container_texture)
+	gl.ActiveTexture(gl.TEXTURE2);
+	gl.BindTexture(gl.TEXTURE_2D, container_specular)
+	gl.ActiveTexture(gl.TEXTURE3);
+	gl.BindTexture(gl.TEXTURE_2D, container_emission)
 	gl.BindVertexArray(VAOs[0])
 	for pos, idx in cube_positions {
 		rotate_by := f32(20 * idx)
@@ -289,12 +252,6 @@ render :: proc() {
 
 		gl.DrawArrays(gl.TRIANGLES, 0, 36)
 	}
-    
-	// Triangle
-	use_shader(tri_shader)
-	set_uniform(tri_shader, "yFactor", f32(sin(current_frame_time) * 0.5))
-	gl.BindVertexArray(VAOs[1])
-	gl.DrawArrays(gl.TRIANGLES, 0, 3)
 
 	// Light Cube
 	use_shader(light_shader)
@@ -325,19 +282,13 @@ key_callback :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods
 		case glfw.PRESS:
 			switch key {
 			case glfw.KEY_X: wireframe = !wireframe
-			case glfw.KEY_ESCAPE: glfw.SetWindowShouldClose(window, true)
-			case glfw.KEY_UP:
-				texture_alpha += 0.1
-				if texture_alpha >= 1.0 do texture_alpha = 1.0
-			case glfw.KEY_DOWN:
-				texture_alpha -= 0.1
-				if texture_alpha <= 0.0 do texture_alpha = 0.0
 			case glfw.KEY_W: moving_forwards = true
 			case glfw.KEY_S: moving_backwards = true
 			case glfw.KEY_A: moving_left = true
 			case glfw.KEY_D: moving_right = true
 			case glfw.KEY_Q: moving_down = true
 			case glfw.KEY_E: moving_up = true
+			case glfw.KEY_ESCAPE: glfw.SetWindowShouldClose(window, true)
 			}
 		
 		case glfw.RELEASE:
