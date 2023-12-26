@@ -1,9 +1,12 @@
-// 11. Lighting maps
-// https://learnopengl.com/Lighting/Lighting maps
+// 12. Light casters
+// https://learnopengl.com/Lighting/Light-casters
+// 13. Multiple lights
+// https://learnopengl.com/Lighting/Multiple-lights
 
 package main
 
 import "core:fmt"
+import "core:strings"
 import "core:runtime"
 import "core:math"
 import lalg "core:math/linalg"
@@ -102,9 +105,43 @@ current_frame_time, last_frame_time, delta_time: f64
 first_mouse := true
 last_mouse_pos: v2
 
-light := Light{
+directional_light := Directional_Light{
 	color = {1, 1, 1},
-	pos = {1.2, 1, 2},
+	pos = {0, 0, 0},
+	dir = {-0.2, -1, -0.3},
+}
+
+point_lights := [?]Point_Light{
+	{
+		color = {1, 1, 1},
+		pos = {0.7, 0.2, 2},
+		linear = ATT_LINEAR,
+		quadratic = ATT_QUADRATIC,
+	},
+	{
+		color = {1, 1, 1},
+		pos = {2.3, -3.3, -4},
+		linear = ATT_LINEAR,
+		quadratic = ATT_QUADRATIC,
+	},
+	{
+		color = {1, 1, 1},
+		pos = {-4, 2, -12},
+		linear = ATT_LINEAR,
+		quadratic = ATT_QUADRATIC,
+	},
+	{
+		color = {1, 1, 1},
+		pos = {0, 0, -3},
+		linear = ATT_LINEAR,
+		quadratic = ATT_QUADRATIC,
+	},
+}
+
+spot_light := Spot_Light{
+	color = {1, 1, 1},
+	linear = ATT_LINEAR,
+	quadratic = ATT_QUADRATIC,
 }
 
 main :: proc() {
@@ -168,12 +205,20 @@ main :: proc() {
 	container_emission = load_texture("container_emission.jpg", gl.CLAMP_TO_BORDER, gl.CLAMP_TO_BORDER)
 
 	use_shader(cube_shader)
-	set_uniform(cube_shader, "material.diffuse", i32(container_texture))
-	set_uniform(cube_shader, "material.specular", i32(container_specular))
-	set_uniform(cube_shader, "material.emission", i32(container_emission))
+	gl.ActiveTexture(gl.TEXTURE0);
+	gl.BindTexture(gl.TEXTURE_2D, container_texture)
+	gl.ActiveTexture(gl.TEXTURE1);
+	gl.BindTexture(gl.TEXTURE_2D, container_specular)
+	gl.ActiveTexture(gl.TEXTURE2);
+	gl.BindTexture(gl.TEXTURE_2D, container_emission)
+	set_uniform(cube_shader, "material.diffuse", 0)
+	set_uniform(cube_shader, "material.specular", 1)
+	set_uniform(cube_shader, "material.emission", 2)
 
-	world_up := v3{0, 1,0}
+	world_up := v3{0, 1, 0}
 	camera.right = lalg.normalize(lalg.cross(world_up, camera.dir))
+	spot_light.cutoff = math.cos(math.to_radians_f32(12.5))
+	spot_light.outer_cutoff = math.cos(math.to_radians_f32(15))
 
 	for !glfw.WindowShouldClose(window) {
 		render()
@@ -188,7 +233,7 @@ render :: proc() {
 	delta_time = current_frame_time - last_frame_time
 	last_frame_time = current_frame_time
 
-	gl.ClearColor(0.2, 0.3, 0.3, 1.0)
+	gl.ClearColor(0.2, 0.2, 0.2, 1.0)
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 	if wireframe {
@@ -224,22 +269,30 @@ render :: proc() {
 	set_uniform(cube_shader, "material.ambient", v3{1, 0.5, 0.31})
 	set_uniform(cube_shader, "material.shininess", 32.0)
 	
-	light.color = v3(1)
+	directional_light.color = v3(1)
+	set_uniform(cube_shader, "dirLight.dir", directional_light.dir)
+	set_uniform(cube_shader, "dirLight.ambient", directional_light.color * 0.05)
+	set_uniform(cube_shader, "dirLight.diffuse", directional_light.color * 0.4)
+	set_uniform(cube_shader, "dirLight.specular", v3(0.5))
+	set_uniform(cube_shader, "spotLight.pos", camera.pos)
+	set_uniform(cube_shader, "spotLight.dir", camera.front)
+	set_uniform(cube_shader, "spotLight.ambient", v3(0))
+	set_uniform(cube_shader, "spotLight.diffuse", spot_light.color)
+	set_uniform(cube_shader, "spotLight.specular", spot_light.color)
+	set_uniform(cube_shader, "spotLight.linear", spot_light.linear)
+	set_uniform(cube_shader, "spotLight.quadratic", spot_light.quadratic)
+	set_uniform(cube_shader, "spotLight.cutOff", spot_light.cutoff)
+	set_uniform(cube_shader, "spotLight.outerCutOff", spot_light.outer_cutoff)
+	for light, i in point_lights {
+		light_str := fmt.tprintf("pointLights[%i]", i)
+		set_uniform(cube_shader, fmt.tprintf("%s.pos", light_str), point_lights[i].pos)
+		set_uniform(cube_shader, fmt.tprintf("%s.ambient", light_str), point_lights[i].color * 0.05)
+		set_uniform(cube_shader, fmt.tprintf("%s.diffuse", light_str), point_lights[i].color * 0.8)
+		set_uniform(cube_shader, fmt.tprintf("%s.linear", light_str), point_lights[i].color)
+		set_uniform(cube_shader, fmt.tprintf("%s.specular", light_str), point_lights[i].linear)
+		set_uniform(cube_shader, fmt.tprintf("%s.quadratic", light_str), point_lights[i].quadratic)
+	}
 
-	ambient := light.color * 0.2
-	diffuse := light.color * 0.5
-
-	set_uniform(cube_shader, "light.pos", light.pos)
-	set_uniform(cube_shader, "light.ambient", ambient)
-	set_uniform(cube_shader, "light.diffuse", diffuse)
-	set_uniform(cube_shader, "light.specular", v3(1))
-
-	gl.ActiveTexture(gl.TEXTURE1);
-	gl.BindTexture(gl.TEXTURE_2D, container_texture)
-	gl.ActiveTexture(gl.TEXTURE2);
-	gl.BindTexture(gl.TEXTURE_2D, container_specular)
-	gl.ActiveTexture(gl.TEXTURE3);
-	gl.BindTexture(gl.TEXTURE_2D, container_emission)
 	gl.BindVertexArray(VAOs[0])
 	for pos, idx in cube_positions {
 		rotate_by := f32(20 * idx)
@@ -255,14 +308,16 @@ render :: proc() {
 
 	// Light Cube
 	use_shader(light_shader)
-	set_uniform(light_shader, "lightColor", light.color)
-	model_mat := lalg.matrix4_scale_f32(0.2)
-	model_mat = lalg.matrix4_translate_f32(light.pos) * model_mat
-	set_uniform(light_shader, "model", &model_mat)
 	set_uniform(light_shader, "view", &view_mat)
 	set_uniform(light_shader, "projection", &proj_mat)
-	gl.BindVertexArray(VAOs[0])
-	gl.DrawArrays(gl.TRIANGLES, 0, 36)
+	for light, idx in point_lights {
+		model_mat := lalg.matrix4_scale_f32(0.2)
+		model_mat = lalg.matrix4_translate_f32(light.pos) * model_mat
+		set_uniform(light_shader, "model", &model_mat)
+		set_uniform(light_shader, "lightColor", light.color)
+
+		gl.DrawArrays(gl.TRIANGLES, 0, 36)
+	}
 
 	glfw.SwapBuffers(window)
 }

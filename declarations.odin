@@ -16,3 +16,23 @@ Camera :: struct {
 Light :: struct {
 	pos, color: v3,
 }
+
+Attenuation :: struct {
+    linear, quadratic: f32,
+}
+
+Directional_Light :: struct {
+    using light: Light,
+    dir: v3,
+}
+
+Point_Light :: struct {
+    using light: Light,
+    using att: Attenuation,
+}
+
+Spot_Light :: struct {
+    using directional_light: Directional_Light,
+    using att: Attenuation,
+    cutoff, outer_cutoff: f32,
+}
