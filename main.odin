@@ -1,7 +1,5 @@
-// 12. Light casters
-// https://learnopengl.com/Lighting/Light-casters
-// 13. Multiple lights
-// https://learnopengl.com/Lighting/Multiple-lights
+// 14. Depth testing
+// https://learnopengl.com/Advanced-OpenGL/Depth-testing
 
 package main
 
@@ -180,6 +178,7 @@ main :: proc() {
 	fmt.println(gl.GetString(gl.VERSION))
 
 	gl.Enable(gl.DEPTH_TEST)
+	gl.DepthFunc(gl.LESS) // Default comparison function
 
 	gl.GenVertexArrays(BUFFER_COUNT, raw_data(VAOs))
 	gl.GenBuffers(BUFFER_COUNT, raw_data(VBOs))
