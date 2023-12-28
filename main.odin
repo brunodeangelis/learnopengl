@@ -1,5 +1,5 @@
-// 14. Depth testing
-// https://learnopengl.com/Advanced-OpenGL/Depth-testing
+// 15. Stencil testing
+// https://learnopengl.com/Advanced-OpenGL/Stencil-testing
 
 package main
 
@@ -85,7 +85,7 @@ tri_verts := [?]f32{
 BUFFER_COUNT :: 1
 VAOs := make([]u32, BUFFER_COUNT)
 VBOs := make([]u32, BUFFER_COUNT)
-cube_shader, light_shader: u32
+cube_shader, single_color_shader: u32
 
 wireframe: bool
 
@@ -180,6 +180,8 @@ main :: proc() {
 	gl.Enable(gl.DEPTH_TEST)
 	gl.DepthFunc(gl.LESS) // Default comparison function
 
+	gl.Enable(gl.STENCIL_TEST)
+
 	gl.GenVertexArrays(BUFFER_COUNT, raw_data(VAOs))
 	gl.GenBuffers(BUFFER_COUNT, raw_data(VBOs))
 
@@ -195,7 +197,7 @@ main :: proc() {
 	gl.EnableVertexAttribArray(2)
 
 	cube_shader, _ = load_shader("cube")
-	light_shader, _ = load_shader("light")
+	single_color_shader, _ = load_shader("single_color")
 
 	stbi.set_flip_vertically_on_load(1)
 	
@@ -233,7 +235,11 @@ render :: proc() {
 	last_frame_time = current_frame_time
 
 	gl.ClearColor(0.2, 0.2, 0.2, 1.0)
-	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+
+	gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
+	gl.StencilMask(0xFF)
 
 	if wireframe {
 		gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)
@@ -249,25 +255,23 @@ render :: proc() {
 	if moving_up do camera.pos.y += 0.1
 	if moving_down do camera.pos.y -= 0.1
 
-	// Textured Cube
-	use_shader(cube_shader)
-
 	view_mat := lalg.matrix4_look_at_f32(
 		camera.pos,
 		camera.pos + camera.front,
 		camera.up,
 	)
-	set_uniform(cube_shader, "view", &view_mat)
-
 	proj_mat := lalg.matrix4_perspective_f32(to_radians(camera.fov), f32(viewport[2]) / f32(viewport[3]), 0.01, 1000)
-	set_uniform(cube_shader, "projection", &proj_mat)
 
+	// Textured Cube - 1st pass
+	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
+	gl.StencilMask(0xFF) // Enable writing to stencil
+	use_shader(cube_shader)
+	set_uniform(cube_shader, "view", &view_mat)
+	set_uniform(cube_shader, "projection", &proj_mat)
 	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
 	set_uniform(cube_shader, "viewPos", camera.pos)
-
 	set_uniform(cube_shader, "material.ambient", v3{1, 0.5, 0.31})
 	set_uniform(cube_shader, "material.shininess", 32.0)
-	
 	directional_light.color = v3(1)
 	set_uniform(cube_shader, "dirLight.dir", directional_light.dir)
 	set_uniform(cube_shader, "dirLight.ambient", directional_light.color * 0.05)
@@ -291,34 +295,49 @@ render :: proc() {
 		set_uniform(cube_shader, fmt.tprintf("%s.specular", light_str), point_lights[i].linear)
 		set_uniform(cube_shader, fmt.tprintf("%s.quadratic", light_str), point_lights[i].quadratic)
 	}
+	draw_cubes(cube_shader)
 
+	// Textured Cube - 2nd pass - Scaled up
+	gl.StencilFunc(gl.NOTEQUAL, 1, 0xFF)
+	gl.StencilMask(0x00) // Disable writing to stencil buffer
+	gl.Disable(gl.DEPTH_TEST)
+	use_shader(single_color_shader)
+	set_uniform(single_color_shader, "view", &view_mat)
+	set_uniform(single_color_shader, "projection", &proj_mat)
+	set_uniform(single_color_shader, "color", v3{1, 0.5, 0})
+	draw_cubes(single_color_shader, 1.1)
+	gl.StencilMask(0xFF)
+	gl.StencilFunc(gl.ALWAYS, 0, 0xFF)
+	gl.Enable(gl.DEPTH_TEST)
+
+	// Light Cubes
+	use_shader(single_color_shader)
+	for light, idx in point_lights {
+		model_mat := lalg.matrix4_translate_f32(light.pos)
+		model_mat *= lalg.matrix4_scale_f32(0.2)
+		set_uniform(single_color_shader, "model", &model_mat)
+		set_uniform(single_color_shader, "color", light.color)
+
+		gl.DrawArrays(gl.TRIANGLES, 0, 36)
+	}
+
+	glfw.SwapBuffers(window)
+}
+
+draw_cubes :: proc(shader: u32, scale: f32 = 1) {
 	gl.BindVertexArray(VAOs[0])
 	for pos, idx in cube_positions {
 		rotate_by := f32(20 * idx)
 		if idx % 3 == 0 {
 			rotate_by += f32(current_frame_time * 2)
 		}
-		model_mat := lalg.matrix4_rotate_f32(rotate_by, {1, 0.3, 0.5})
-		model_mat = lalg.matrix4_translate_f32(pos) * model_mat
-		set_uniform(cube_shader, "model", &model_mat)
+		model_mat := lalg.matrix4_translate_f32(pos)
+		model_mat *= lalg.matrix4_rotate_f32(rotate_by, {1, 0.3, 0.5})
+		model_mat *= lalg.matrix4_scale_f32(scale)
+		set_uniform(shader, "model", &model_mat)
 
 		gl.DrawArrays(gl.TRIANGLES, 0, 36)
 	}
-
-	// Light Cube
-	use_shader(light_shader)
-	set_uniform(light_shader, "view", &view_mat)
-	set_uniform(light_shader, "projection", &proj_mat)
-	for light, idx in point_lights {
-		model_mat := lalg.matrix4_scale_f32(0.2)
-		model_mat = lalg.matrix4_translate_f32(light.pos) * model_mat
-		set_uniform(light_shader, "model", &model_mat)
-		set_uniform(light_shader, "lightColor", light.color)
-
-		gl.DrawArrays(gl.TRIANGLES, 0, 36)
-	}
-
-	glfw.SwapBuffers(window)
 }
 
 fb_size_callback :: proc "c" (window: glfw.WindowHandle, width, height: i32) {

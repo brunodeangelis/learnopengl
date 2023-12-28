@@ -14,10 +14,10 @@ void main()
 #type fragment
 #version 410 core
 
-uniform vec3 lightColor;
+uniform vec3 color;
 
 out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(lightColor, 1.0);
+    fragColor = vec4(color, 1.0);
 }
