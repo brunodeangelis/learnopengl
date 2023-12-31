@@ -1,5 +1,5 @@
-// 15. Stencil testing
-// https://learnopengl.com/Advanced-OpenGL/Stencil-testing
+// 16. Blending
+// https://learnopengl.com/Advanced-OpenGL/Blending
 
 package main
 
@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:strings"
 import "core:runtime"
 import "core:math"
+import "core:slice"
 import lalg "core:math/linalg"
 
 import gl "vendor:OpenGL"
@@ -73,7 +74,30 @@ cube_positions := [?]v3{
     {1.5,   0.2, -1.5},
     {-1.3,  1,   -1.5},
 }
-container_texture, container_specular, container_emission: u32
+
+quad_verts := [?]f32{
+	// pos          // tex coords
+	0,  0.5,  0,    0,  1,
+	0, -0.5,  0,    0,  0,
+	1, -0.5,  0,    1,  0,
+
+	0,  0.5,  0,    0,  1,
+	1, -0.5,  0,    1,  0,
+	1,  0.5,  0,    1,  1,
+}
+
+windows := []v3{
+	{-1.5,  0, -0.48},
+	{ 1.5,  0,  0.51},
+	{ 0,    0,  0.7},
+	{-0.3,  0, -2.3},
+	{ 0.5,  0, -0.6},
+}
+
+container_texture,
+container_specular,
+container_emission,
+window_texture: u32
 
 tri_verts := [?]f32{
 	// xyz           // rgb
@@ -82,10 +106,13 @@ tri_verts := [?]f32{
 	0.25, -0.5, 0,   0, 0, 1,
 }
 
-BUFFER_COUNT :: 1
+BUFFER_COUNT :: 2
 VAOs := make([]u32, BUFFER_COUNT)
 VBOs := make([]u32, BUFFER_COUNT)
-cube_shader, single_color_shader: u32
+
+cube_shader,
+single_color_shader,
+window_shader: u32
 
 wireframe: bool
 
@@ -182,6 +209,9 @@ main :: proc() {
 
 	gl.Enable(gl.STENCIL_TEST)
 
+	gl.Enable(gl.BLEND)
+	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+
 	gl.GenVertexArrays(BUFFER_COUNT, raw_data(VAOs))
 	gl.GenBuffers(BUFFER_COUNT, raw_data(VBOs))
 
@@ -196,25 +226,25 @@ main :: proc() {
 	gl.VertexAttribPointer(2, 3, gl.FLOAT, gl.FALSE, 8 * size_of(f32), 5 * size_of(f32))
 	gl.EnableVertexAttribArray(2)
 
+	// Windows
+	gl.BindVertexArray(VAOs[1])
+	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[1])
+	gl.BufferData(gl.ARRAY_BUFFER, size_of(quad_verts), &quad_verts, gl.STATIC_DRAW)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 5 * size_of(f32), 0)
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 5 * size_of(f32), 3 * size_of(f32))
+	gl.EnableVertexAttribArray(1)
+
 	cube_shader, _ = load_shader("cube")
 	single_color_shader, _ = load_shader("single_color")
+	window_shader, _ = load_shader("window")
 
 	stbi.set_flip_vertically_on_load(1)
 	
 	container_texture = load_texture("container.png")
 	container_specular = load_texture("container_specular.png")
 	container_emission = load_texture("container_emission.jpg", gl.CLAMP_TO_BORDER, gl.CLAMP_TO_BORDER)
-
-	use_shader(cube_shader)
-	gl.ActiveTexture(gl.TEXTURE0);
-	gl.BindTexture(gl.TEXTURE_2D, container_texture)
-	gl.ActiveTexture(gl.TEXTURE1);
-	gl.BindTexture(gl.TEXTURE_2D, container_specular)
-	gl.ActiveTexture(gl.TEXTURE2);
-	gl.BindTexture(gl.TEXTURE_2D, container_emission)
-	set_uniform(cube_shader, "material.diffuse", 0)
-	set_uniform(cube_shader, "material.specular", 1)
-	set_uniform(cube_shader, "material.emission", 2)
+	window_texture = load_texture("window.png")
 
 	world_up := v3{0, 1, 0}
 	camera.right = lalg.normalize(lalg.cross(world_up, camera.dir))
@@ -266,6 +296,15 @@ render :: proc() {
 	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
 	gl.StencilMask(0xFF) // Enable writing to stencil
 	use_shader(cube_shader)
+	gl.ActiveTexture(gl.TEXTURE0)
+	gl.BindTexture(gl.TEXTURE_2D, container_texture)
+	gl.ActiveTexture(gl.TEXTURE1)
+	gl.BindTexture(gl.TEXTURE_2D, container_specular)
+	gl.ActiveTexture(gl.TEXTURE2)
+	gl.BindTexture(gl.TEXTURE_2D, container_emission)
+	set_uniform(cube_shader, "material.diffuse", 0)
+	set_uniform(cube_shader, "material.specular", 1)
+	set_uniform(cube_shader, "material.emission", 2)
 	set_uniform(cube_shader, "view", &view_mat)
 	set_uniform(cube_shader, "projection", &proj_mat)
 	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
@@ -321,7 +360,27 @@ render :: proc() {
 		gl.DrawArrays(gl.TRIANGLES, 0, 36)
 	}
 
+	// Windows
+	use_shader(window_shader)
+	gl.ActiveTexture(gl.TEXTURE0)
+	gl.BindTexture(gl.TEXTURE_2D, window_texture)
+	set_uniform(window_shader, "texture0", 0)
+	set_uniform(window_shader, "view", &view_mat)
+	set_uniform(window_shader, "projection", &proj_mat)
+	// Sort windows (should be done only when camera moves, but whatever)
+	slice.sort_by(windows, dist_cmp)
+	for pos in windows {
+		model_mat := lalg.matrix4_translate_f32(pos)
+		set_uniform(window_shader, "model", &model_mat)
+		gl.DrawArrays(gl.TRIANGLES, 0, 6)
+	}
+
 	glfw.SwapBuffers(window)
+}
+
+// Furthest to closest
+dist_cmp :: proc(i, j: v3) -> bool {
+	return lalg.length2(camera.pos - i) > lalg.length2(camera.pos - j)
 }
 
 draw_cubes :: proc(shader: u32, scale: f32 = 1) {
