@@ -10,7 +10,19 @@ import gl "vendor:OpenGL"
 import stbi "vendor:stb/image"
 
 
-load_shader :: proc(name: string) -> (program: u32, success: bool) {
+load_shader_separate :: proc(vs_name, fs_name: string) -> (program: u32, success: bool) {
+	vs_path := filepath.join({
+		SHADERS_BASE_PATH,
+		strings.concatenate({vs_name, ".", SHADERS_VERTEX_EXTENSION}),
+	})
+	fs_path := filepath.join({
+		SHADERS_BASE_PATH,
+		strings.concatenate({fs_name, ".", SHADERS_FRAGMENT_EXTENSION}),
+	})
+	return gl.load_shaders_file(vs_path, fs_path)
+}
+
+load_shader_unified :: proc(name: string) -> (program: u32, success: bool) {
 	file_name, concat_err := strings.concatenate({name, ".", SHADERS_EXTENSION})
 	if concat_err != nil {
 		return 0, false
@@ -30,6 +42,11 @@ load_shader :: proc(name: string) -> (program: u32, success: bool) {
 
 	// See proc code in odin/vendor/OpenGL for details
 	return gl.load_shaders_source(sections[1], sections[2])
+}
+
+load_shader :: proc{
+	load_shader_separate,
+	load_shader_unified,
 }
 
 use_shader :: proc(id: u32) {

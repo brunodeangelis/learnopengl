@@ -36,3 +36,11 @@ Spot_Light :: struct {
     using att: Attenuation,
     cutoff, outer_cutoff: f32,
 }
+
+Postprocess :: enum {
+    NONE,
+    SHARPEN,
+    GRAYSCALE,
+    BLUR,
+    EDGE,
+}

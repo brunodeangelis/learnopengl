@@ -1,5 +1,5 @@
-// 17. Face culling
-// https://learnopengl.com/Advanced-OpenGL/Face-culling
+// 18. Framebuffers
+// https://learnopengl.com/Advanced-OpenGL/Framebuffers
 
 package main
 
@@ -81,7 +81,7 @@ cube_positions := []v3{
     {-1.3,  1,   -1.5},
 }
 
-quad_verts := [?]f32{
+quad_3d_verts := [?]f32{
 	// pos          // tex coords
 	0,  0.5,  0,    0,  1,
 	0, -0.5,  0,    0,  0,
@@ -90,6 +90,17 @@ quad_verts := [?]f32{
 	0,  0.5,  0,    0,  1,
 	1, -0.5,  0,    1,  0,
 	1,  0.5,  0,    1,  1,
+}
+
+quad_fullscreen_verts := [?]f32{
+    // pos     // tex coords
+    -1,  1,    0, 1,
+    -1, -1,    0, 0,
+     1, -1,    1, 0,
+
+    -1,  1,    0, 1,
+     1, -1,    1, 0,
+     1,  1,    1, 1,
 }
 
 windows := []v3{
@@ -105,13 +116,19 @@ container_specular,
 container_emission,
 window_texture: u32
 
-BUFFER_COUNT :: 2
+BUFFER_COUNT :: 3
 VAOs := make([]u32, BUFFER_COUNT)
 VBOs := make([]u32, BUFFER_COUNT)
+framebuffer, rbo, tex_color_buffer: u32
 
 cube_shader,
 single_color_shader,
-window_shader: u32
+window_shader,
+no_post_shader,
+sharpen_shader,
+grayscale_shader,
+blur_shader,
+edge_shader: u32
 
 wireframe: bool
 
@@ -168,6 +185,8 @@ spot_light := Spot_Light{
 	quadratic = ATT_QUADRATIC,
 }
 
+current_postprocess := Postprocess.SHARPEN
+
 main :: proc() {
 	if !glfw.Init() {
 		fmt.println("Failed to initialize GLFW")
@@ -215,6 +234,32 @@ main :: proc() {
 	gl.CullFace(gl.BACK) // Default
 	gl.FrontFace(gl.CCW) // Default
 
+	// Custom fb will be for color data
+	gl.GenFramebuffers(1, &framebuffer)
+	gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer)
+	defer gl.DeleteFramebuffers(1, &framebuffer)
+
+	// Render buffer will take care of depth and stencil buffs
+	gl.GenRenderbuffers(1, &rbo)
+	gl.BindRenderbuffer(gl.RENDERBUFFER, rbo)
+	gl.RenderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, WINDOW_WIDTH*2, WINDOW_HEIGHT*2)
+	gl.BindRenderbuffer(gl.RENDERBUFFER, 0)
+	gl.FramebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, rbo)
+
+	gl.GenTextures(1, &tex_color_buffer)
+	gl.BindTexture(gl.TEXTURE_2D, tex_color_buffer)
+	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, WINDOW_WIDTH*2, WINDOW_HEIGHT*2, 0, gl.RGB, gl.UNSIGNED_BYTE, nil)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+	gl.BindTexture(gl.TEXTURE_2D, 0)
+
+	gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex_color_buffer, 0)
+
+	if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
+		fmt.println("ERROR::FRAMEBUFFER:: Framebuffer is not complete")
+	}
+	gl.BindFramebuffer(gl.FRAMEBUFFER, 0) // Revert to default fb
+
 	gl.GenVertexArrays(BUFFER_COUNT, raw_data(VAOs))
 	gl.GenBuffers(BUFFER_COUNT, raw_data(VBOs))
 
@@ -232,15 +277,29 @@ main :: proc() {
 	// Windows
 	gl.BindVertexArray(VAOs[1])
 	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[1])
-	gl.BufferData(gl.ARRAY_BUFFER, size_of(quad_verts), &quad_verts, gl.STATIC_DRAW)
+	gl.BufferData(gl.ARRAY_BUFFER, size_of(quad_3d_verts), &quad_3d_verts, gl.STATIC_DRAW)
 	gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 5 * size_of(f32), 0)
 	gl.EnableVertexAttribArray(0)
 	gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 5 * size_of(f32), 3 * size_of(f32))
 	gl.EnableVertexAttribArray(1)
 
+	// Fullscreen quad
+	gl.BindVertexArray(VAOs[2])
+	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[2])
+	gl.BufferData(gl.ARRAY_BUFFER, size_of(quad_fullscreen_verts), &quad_fullscreen_verts, gl.STATIC_DRAW)
+	gl.VertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 4 * size_of(f32), 0)
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 4 * size_of(f32), 2 * size_of(f32))
+	gl.EnableVertexAttribArray(1)
+
 	cube_shader, _ = load_shader("cube")
 	single_color_shader, _ = load_shader("single_color")
 	window_shader, _ = load_shader("window")
+	no_post_shader, _ = load_shader("rt", "no_post")
+	sharpen_shader, _ = load_shader("rt", "sharpen")
+	grayscale_shader, _ = load_shader("rt", "grayscale")
+	blur_shader, _ = load_shader("rt", "blur")
+	edge_shader, _ = load_shader("rt", "edge")
 
 	stbi.set_flip_vertically_on_load(1)
 	
@@ -261,24 +320,44 @@ main :: proc() {
 }
 
 render :: proc() {
-	using math
-
 	current_frame_time = glfw.GetTime()
 	delta_time = current_frame_time - last_frame_time
 	last_frame_time = current_frame_time
 
+	gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer)
 	gl.ClearColor(0.2, 0.2, 0.2, 1.0)
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT)
+	gl.Enable(gl.DEPTH_TEST)
+	draw_scene() // Render everything to a custom fb
+
+	gl.BindFramebuffer(gl.FRAMEBUFFER, 0) // Back to default fb
+	gl.ClearColor(1, 1, 1, 1)
+	gl.Clear(gl.COLOR_BUFFER_BIT)
+
+	// Fullscreen RenderTexture
+	switch current_postprocess {
+	case .NONE:      use_shader(no_post_shader)
+	case .SHARPEN:   use_shader(sharpen_shader)
+	case .GRAYSCALE: use_shader(grayscale_shader)
+	case .BLUR:      use_shader(blur_shader)
+	case .EDGE:      use_shader(edge_shader)
+	}
+	gl.BindVertexArray(VAOs[2])
+	gl.Disable(gl.DEPTH_TEST) // Has to render in front of everything
+	gl.BindTexture(gl.TEXTURE_2D, tex_color_buffer)
+	gl.DrawArrays(gl.TRIANGLES, 0, 6)
+
+	glfw.SwapBuffers(window)
+}
+
+draw_scene :: proc() {
+	using math
 
 	gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
 	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
 	gl.StencilMask(0xFF)
 
-	if wireframe {
-		gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)
-	} else {
-		gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL)
-	}
+	gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE if wireframe else gl.FILL)
 
 	speed := camera.speed * f32(delta_time)
 	if moving_forwards do camera.pos += camera.front * speed
@@ -379,8 +458,6 @@ render :: proc() {
 		gl.DrawArrays(gl.TRIANGLES, 0, 6)
 	}
 	gl.Enable(gl.CULL_FACE) // Re-enable culling after drawing
-
-	glfw.SwapBuffers(window)
 }
 
 // Furthest to closest
@@ -425,6 +502,11 @@ key_callback :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods
 			case glfw.KEY_D: moving_right = true
 			case glfw.KEY_Q: moving_down = true
 			case glfw.KEY_E: moving_up = true
+			case glfw.KEY_1: current_postprocess = .NONE
+			case glfw.KEY_2: current_postprocess = .SHARPEN
+			case glfw.KEY_3: current_postprocess = .GRAYSCALE
+			case glfw.KEY_4: current_postprocess = .BLUR
+			case glfw.KEY_5: current_postprocess = .EDGE
 			case glfw.KEY_ESCAPE: glfw.SetWindowShouldClose(window, true)
 			}
 		
