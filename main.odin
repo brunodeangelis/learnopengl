@@ -1,5 +1,5 @@
-// 18. Framebuffers
-// https://learnopengl.com/Advanced-OpenGL/Framebuffers
+// 19. Cubemaps
+// https://learnopengl.com/Advanced-OpenGL/Cubemaps
 
 package main
 
@@ -111,12 +111,57 @@ windows := []v3{
 	{ 0.5,  0, -0.6},
 }
 
+skybox_verts := [?]f32{
+    -1,  1, -1,
+    -1, -1, -1,
+     1, -1, -1,
+     1, -1, -1,
+     1,  1, -1,
+    -1,  1, -1,
+
+    -1, -1,  1,
+    -1, -1, -1,
+    -1,  1, -1,
+    -1,  1, -1,
+    -1,  1,  1,
+    -1, -1,  1,
+
+     1, -1, -1,
+     1, -1,  1,
+     1,  1,  1,
+     1,  1,  1,
+     1,  1, -1,
+     1, -1, -1,
+
+    -1, -1,  1,
+    -1,  1,  1,
+     1,  1,  1,
+     1,  1,  1,
+     1, -1,  1,
+    -1, -1,  1,
+
+    -1,  1, -1,
+     1,  1, -1,
+     1,  1,  1,
+     1,  1,  1,
+    -1,  1,  1,
+    -1,  1, -1,
+
+    -1, -1, -1,
+    -1, -1,  1,
+     1, -1, -1,
+     1, -1, -1,
+    -1, -1,  1,
+     1, -1,  1,
+}
+
 container_texture,
 container_specular,
 container_emission,
-window_texture: u32
+window_texture,
+cubemap_texture: u32
 
-BUFFER_COUNT :: 3
+BUFFER_COUNT :: 4
 VAOs := make([]u32, BUFFER_COUNT)
 VBOs := make([]u32, BUFFER_COUNT)
 framebuffer, rbo, tex_color_buffer: u32
@@ -128,7 +173,8 @@ no_post_shader,
 sharpen_shader,
 grayscale_shader,
 blur_shader,
-edge_shader: u32
+edge_shader,
+cubemap_shader: u32
 
 wireframe: bool
 
@@ -185,7 +231,7 @@ spot_light := Spot_Light{
 	quadratic = ATT_QUADRATIC,
 }
 
-current_postprocess := Postprocess.SHARPEN
+current_postprocess := Postprocess.NONE
 
 main :: proc() {
 	if !glfw.Init() {
@@ -292,6 +338,13 @@ main :: proc() {
 	gl.VertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 4 * size_of(f32), 2 * size_of(f32))
 	gl.EnableVertexAttribArray(1)
 
+	// Skybox
+	gl.BindVertexArray(VAOs[3])
+	gl.BindBuffer(gl.ARRAY_BUFFER, VBOs[3])
+	gl.BufferData(gl.ARRAY_BUFFER, size_of(skybox_verts), &skybox_verts, gl.STATIC_DRAW)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), 0)
+	gl.EnableVertexAttribArray(0)
+
 	cube_shader, _ = load_shader("cube")
 	single_color_shader, _ = load_shader("single_color")
 	window_shader, _ = load_shader("window")
@@ -300,6 +353,7 @@ main :: proc() {
 	grayscale_shader, _ = load_shader("rt", "grayscale")
 	blur_shader, _ = load_shader("rt", "blur")
 	edge_shader, _ = load_shader("rt", "edge")
+	cubemap_shader, _ = load_shader("cubemap")
 
 	stbi.set_flip_vertically_on_load(1)
 	
@@ -307,6 +361,8 @@ main :: proc() {
 	container_specular = load_texture("container_specular.png")
 	container_emission = load_texture("container_emission.jpg", gl.CLAMP_TO_BORDER, gl.CLAMP_TO_BORDER)
 	window_texture = load_texture("window.png")
+
+	cubemap_texture = load_cubemap("yokohama")
 
 	world_up := v3{0, 1, 0}
 	camera.right = lalg.normalize(lalg.cross(world_up, camera.dir))
@@ -353,10 +409,6 @@ render :: proc() {
 draw_scene :: proc() {
 	using math
 
-	gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
-	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
-	gl.StencilMask(0xFF)
-
 	gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE if wireframe else gl.FILL)
 
 	speed := camera.speed * f32(delta_time)
@@ -374,6 +426,24 @@ draw_scene :: proc() {
 	)
 	proj_mat := lalg.matrix4_perspective_f32(to_radians(camera.fov), f32(viewport[2]) / f32(viewport[3]), 0.01, 1000)
 
+	// Skybox
+	gl.DepthMask(gl.FALSE)
+	use_shader(cubemap_shader)
+	set_uniform(cubemap_shader, "projection", &proj_mat)
+	view_mat_no_translation := lalg.matrix3_from_matrix4_f32(view_mat)
+	skybox_mat := lalg.matrix4_from_matrix3_f32(view_mat_no_translation)
+	set_uniform(cubemap_shader, "view", &skybox_mat)
+	gl.BindVertexArray(VAOs[3])
+	gl.ActiveTexture(gl.TEXTURE0)
+	gl.BindTexture(gl.TEXTURE_CUBE_MAP, cubemap_texture)
+	set_uniform(cubemap_shader, "skybox", 0)
+	gl.DrawArrays(gl.TRIANGLES, 0, 36)
+	gl.DepthMask(gl.TRUE)
+
+	gl.StencilOp(gl.KEEP, gl.KEEP, gl.REPLACE)
+	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
+	gl.StencilMask(0xFF)
+
 	// Textured Cube - 1st pass
 	gl.StencilFunc(gl.ALWAYS, 1, 0xFF)
 	gl.StencilMask(0xFF) // Enable writing to stencil
@@ -384,9 +454,12 @@ draw_scene :: proc() {
 	gl.BindTexture(gl.TEXTURE_2D, container_specular)
 	gl.ActiveTexture(gl.TEXTURE2)
 	gl.BindTexture(gl.TEXTURE_2D, container_emission)
+	gl.ActiveTexture(gl.TEXTURE3)
+	gl.BindTexture(gl.TEXTURE_CUBE_MAP, cubemap_texture)
 	set_uniform(cube_shader, "material.diffuse", 0)
 	set_uniform(cube_shader, "material.specular", 1)
 	set_uniform(cube_shader, "material.emission", 2)
+	set_uniform(cube_shader, "skybox", 3)
 	set_uniform(cube_shader, "view", &view_mat)
 	set_uniform(cube_shader, "projection", &proj_mat)
 	sin_time01 := sin(current_frame_time) * 0.5 + 0.5
@@ -418,19 +491,6 @@ draw_scene :: proc() {
 	}
 	draw_cubes(cube_shader)
 
-	// Textured Cube - 2nd pass - Scaled up
-	gl.StencilFunc(gl.NOTEQUAL, 1, 0xFF)
-	gl.StencilMask(0x00) // Disable writing to stencil buffer
-	gl.Disable(gl.DEPTH_TEST)
-	use_shader(single_color_shader)
-	set_uniform(single_color_shader, "view", &view_mat)
-	set_uniform(single_color_shader, "projection", &proj_mat)
-	set_uniform(single_color_shader, "color", v3{1, 0.5, 0})
-	draw_cubes(single_color_shader, 1.1)
-	gl.StencilMask(0xFF)
-	gl.StencilFunc(gl.ALWAYS, 0, 0xFF)
-	gl.Enable(gl.DEPTH_TEST)
-
 	// Light Cubes
 	use_shader(single_color_shader)
 	for light, idx in point_lights {
@@ -458,6 +518,19 @@ draw_scene :: proc() {
 		gl.DrawArrays(gl.TRIANGLES, 0, 6)
 	}
 	gl.Enable(gl.CULL_FACE) // Re-enable culling after drawing
+
+	// Textured Cube - 2nd pass - Scaled up
+	gl.StencilFunc(gl.NOTEQUAL, 1, 0xFF)
+	gl.StencilMask(0x00) // Disable writing to stencil buffer
+	gl.Disable(gl.DEPTH_TEST)
+	use_shader(single_color_shader)
+	set_uniform(single_color_shader, "view", &view_mat)
+	set_uniform(single_color_shader, "projection", &proj_mat)
+	set_uniform(single_color_shader, "color", v3{1, 0.5, 0})
+	draw_cubes(single_color_shader, 1.1)
+	gl.StencilMask(0xFF)
+	gl.StencilFunc(gl.ALWAYS, 0, 0xFF)
+	gl.Enable(gl.DEPTH_TEST)
 }
 
 // Furthest to closest

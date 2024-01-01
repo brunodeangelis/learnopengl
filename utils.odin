@@ -108,7 +108,7 @@ load_texture :: proc(file_name: string, wrap_s := gl.REPEAT, wrap_t := gl.REPEAT
 	defer delete(file_path)
 	
 	image_bytes := stbi.load(file_path, &image_width, &image_height, &image_chans, 0)
-	defer stbi.image_free(image_bytes)	
+	defer stbi.image_free(image_bytes)
 
 	format := gl.RGB
 	if image_chans == 4 {
@@ -124,6 +124,41 @@ load_texture :: proc(file_name: string, wrap_s := gl.REPEAT, wrap_t := gl.REPEAT
 
 	gl.TexImage2D(gl.TEXTURE_2D, 0, i32(format), i32(image_width), i32(image_height), 0, u32(format), gl.UNSIGNED_BYTE, image_bytes)
 	gl.GenerateMipmap(gl.TEXTURE_2D)
+
+	return tex_id
+}
+
+// +X (right)
+// -X (left)
+// +Y (top)
+// -Y (bottom)
+// +Z (front) 
+// -Z (back)
+load_cubemap :: proc(name: string) -> u32 {
+	tex_id: u32
+	gl.GenTextures(1, &tex_id)
+	gl.BindTexture(gl.TEXTURE_CUBE_MAP, tex_id)
+
+	stbi.set_flip_vertically_on_load(0)
+
+	image_width, image_height, image_chans: i32
+	for file_name, i in CUBEMAP_FILE_NAMES {
+		file_path := strings.clone_to_cstring(
+			filepath.join({CUBEMAPS_BASE_PATH, name, file_name}),
+			context.temp_allocator,
+		)
+		image_bytes := stbi.load(file_path, &image_width, &image_height, &image_chans, 0)
+		defer stbi.image_free(image_bytes)
+		gl.TexImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + u32(i), 0, gl.RGB, image_width, image_height, 0, gl.RGB, gl.UNSIGNED_BYTE, image_bytes)
+	}
+
+	gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+	gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+	gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+	gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+	gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE)
+
+	stbi.set_flip_vertically_on_load(1)
 
 	return tex_id
 }

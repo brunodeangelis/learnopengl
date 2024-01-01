@@ -15,5 +15,15 @@ SHADERS_FRAGMENT_SEPARATOR :: "#type fragment"
 
 TEXTURES_BASE_PATH :: "textures"
 
+CUBEMAPS_BASE_PATH :: "cubemaps"
+CUBEMAP_FILE_NAMES :: []string{
+    "posx.jpg",
+    "negx.jpg",
+    "posy.jpg",
+    "negy.jpg",
+    "posz.jpg",
+    "negz.jpg",
+}
+
 ATT_LINEAR :: 0.09
 ATT_QUADRATIC :: 0.032

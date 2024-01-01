@@ -14,13 +14,13 @@ out vec3 fragPos;
 
 void main()
 {
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
     textureCoord = aTextureCoord;
 
     // Op better done once in CPU rather than for each vertex
     normal = mat3(transpose(inverse(model))) * aNormal;
 
     fragPos = vec3(model * vec4(aPos, 1.0));
+    gl_Position = projection * view * vec4(fragPos, 1.0);
 }
 
 #type fragment
@@ -76,6 +76,7 @@ uniform DirectionalLight dirLight;
 uniform PointLight pointLights[NR_POINT_LIGHTS];
 uniform SpotLight spotLight;
 uniform vec3 viewPos;
+uniform samplerCube skybox;
 
 out vec4 fragColor;
 
@@ -109,6 +110,12 @@ void main() {
     result += calcDirLight(dirLight, norm, viewDir);
     result += calcSpotLight(spotLight, norm, fragPos, viewDir);
     result += emissionColor;
+
+    vec3 I = normalize(fragPos - viewPos);
+    vec3 R = reflect(I, norm);
+    vec3 reflection = texture(skybox, R).rgb;
+
+    result = mix(result, reflection, 0.3);
 
     fragColor = vec4(result, 1.0);
 
