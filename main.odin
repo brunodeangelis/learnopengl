@@ -68,7 +68,7 @@ cube_verts := [?]f32 {
    -0.5,  0.5,  0.5,      0, 0,     0,  1,  0, // BL
 }
 
-cube_positions := [?]v3{
+cube_positions := []v3{
 	{0,     0,    0},
 	{2,     5,   -15},
     {-1.5, -2.2, -2.5},
@@ -105,13 +105,6 @@ container_specular,
 container_emission,
 window_texture: u32
 
-tri_verts := [?]f32{
-	// xyz           // rgb
-	0.5,   0.5, 0,   1, 0, 0,
-	0.75, -0.5, 0,   0, 1, 0,
-	0.25, -0.5, 0,   0, 0, 1,
-}
-
 BUFFER_COUNT :: 2
 VAOs := make([]u32, BUFFER_COUNT)
 VBOs := make([]u32, BUFFER_COUNT)
@@ -142,7 +135,7 @@ directional_light := Directional_Light{
 	dir = {-0.2, -1, -0.3},
 }
 
-point_lights := [?]Point_Light{
+point_lights := []Point_Light{
 	{
 		color = {1, 1, 1},
 		pos = {0.7, 0.2, 2},
